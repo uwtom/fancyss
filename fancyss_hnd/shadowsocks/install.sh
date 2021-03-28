@@ -6,8 +6,10 @@ source /koolshare/scripts/base.sh
 eval $(dbus export ss)
 alias echo_date='echo 【$(TZ=UTC-8 date -R +%Y年%m月%d日\ %X)】:'
 ROG_86U=0
+BUILDNO=$(nvram get buildno)
 EXT_NU=$(nvram get extendno)
-EXT_NU=${EXT_NU%_*}
+EXT_NU=$(echo ${EXT_NU%_*} | grep -Eo "^[0-9]{1,10}$" )
+[ -z "${EXT_NU}" ] && EXT_NU="0"
 mkdir -p /koolshare/ss
 mkdir -p /tmp/upload
 odmpid=$(nvram get odmpid)
@@ -19,7 +21,7 @@ LINUX_VER=$(uname -r|awk -F"." '{print $1$2}')
 _get_type() {
 	local FWTYPE=$(nvram get extendno|grep koolshare)
 	if [ -d "/koolshare" ];then
-		if [ -n $FWTYPE ];then
+		if [ -n "${FWTYPE}" ];then
 			echo "koolshare官改固件"
 		else
 			echo "koolshare梅林改版固件"
@@ -59,7 +61,7 @@ else
 fi
 
 # 判断固件UI类型
-if [ -n "$(nvram get extendno | grep koolshare)" -a "$(nvram get productid)" == "RT-AC86U" -a "${EXT_NU}" -lt "81918" ];then
+if [ -n "$(nvram get extendno | grep koolshare)" -a "$(nvram get productid)" == "RT-AC86U" -a "${EXT_NU}" -lt "81918" -a "${BUILDNO}" != "386" ];then
 	ROG_86U=1
 fi
 
@@ -84,15 +86,6 @@ if [ -n "$(ls /koolshare/ss/postscripts/P*.sh 2>/dev/null)" ];then
 	find /koolshare/ss/postscripts -name "P*.sh" | xargs -i mv {} -f /tmp/ss_backup
 fi
 
-# 如果dnsmasq是mounted状态，先恢复
-MOUNTED=$(mount|grep -o dnsmasq)
-if [ -n "$MOUNTED" ];then
-	echo_date 恢复dnsmasq-fastlookup为原版dnsmasq
-	killall dnsmasq >/dev/null 2>&1
-	umount /usr/sbin/dnsmasq
-	service restart_dnsmasq >/dev/null 2>&1
-fi
-
 echo_date 清理旧文件
 rm -rf /koolshare/ss/*
 rm -rf /koolshare/scripts/ss_*
@@ -110,9 +103,11 @@ rm -rf /koolshare/bin/haproxy
 rm -rf /koolshare/bin/dnscrypt-proxy
 rm -rf /koolshare/bin/dns2socks
 rm -rf /koolshare/bin/client_linux_arm*
+rm -rf /koolshare/bin/cdns
 rm -rf /koolshare/bin/chinadns
 rm -rf /koolshare/bin/chinadns1
 rm -rf /koolshare/bin/chinadns-ng
+rm -rf /koolshare/bin/smartdns
 rm -rf /koolshare/bin/resolveip
 rm -rf /koolshare/bin/speederv1
 rm -rf /koolshare/bin/speederv2
@@ -121,17 +116,23 @@ rm -rf /koolshare/bin/v2ray
 rm -rf /koolshare/bin/v2ctl
 rm -rf /koolshare/bin/v2ray-plugin
 rm -rf /koolshare/bin/https_dns_proxy
-rm -rf /koolshare/bin/haveged
-rm -rf /koolshare/bin/https_dns_proxy
 rm -rf /koolshare/bin/httping
-rm -rf /koolshare/bin/dnsmassq
+rm -rf /koolshare/bin/haveged
 rm -rf /koolshare/res/icon-shadowsocks.png
 rm -rf /koolshare/res/ss-menu.js
 rm -rf /koolshare/res/qrcode.js
 rm -rf /koolshare/res/tablednd.js
+rm -rf /koolshare/res/all.png
+rm -rf /koolshare/res/gfw.png
+rm -rf /koolshare/res/chn.png
+rm -rf /koolshare/res/game.png
 rm -rf /koolshare/res/shadowsocks.css
 find /koolshare/init.d/ -name "*shadowsocks.sh" | xargs rm -rf
 find /koolshare/init.d/ -name "*socks5.sh" | xargs rm -rf
+
+# legacy
+rm -rf /koolshare/bin/dnsmasq >/dev/null 2>&1
+rm -rf /koolshare/bin/Pcap_DNSProxy >/dev/null 2>&1
 
 # 对于jffs分区过小的插件，删除某些功能的二进制文件，比如RT-AX56U_V2的jffs只有15MB，所以移除一些功能
 JFFS_TOTAL=$(df|grep -Ew "/jffs" | awk '{print $2}')
@@ -174,6 +175,13 @@ if [ "${JFFS_TOTAL}" -le "20000" ];then
 	sed -i 's/\, \"负载均衡设置\"//g' /tmp/shadowsocks/res/ss-menu.js
 	sed -i 's/\, \"Module_shadowsocks_lb\.asp\"//g' /tmp/shadowsocks/res/ss-menu.js
 	echo ".show-btn5, .show-btn6{display: none;}" >> /tmp/shadowsocks/res/shadowsocks.css
+fi
+
+# 386固件全面使用openssl1.1.1，弃用了openssl1.0.0，所以判断使用openssl1.1.1的使用新版本的httping
+if [ -f "/usr/lib/libcrypto.so.1.1" ];then
+	mv /tmp/shadowsocks/bin/httping_openssl_1.1.1 /tmp/shadowsocks/bin/httping
+else
+	rm -rf /tmp/shadowsocks/bin/httping_openssl_1.1.1
 fi
 
 # 检测储存空间是否足够
